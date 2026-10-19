@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-19T21:22:45.183012+00:00",
+  "checked_at": "2026-10-19T21:23:58.405658+00:00",
   "method": "ffprobe audio codec inspection and FFmpeg PCM decode / volumedetect",
   "only_media_inspection": true,
   "publishing_mutations": 0,
@@ -8,45 +8,45 @@
       "file_present": true,
       "audio_present": true,
       "audio_decoding_ok": true,
-      "audible_signal": false,
+      "audible_signal": true,
       "video_present": true,
       "codec": "aac",
       "sample_rate": 44100,
       "channels": 2,
       "audio_bitrate": 58311,
       "duration_seconds": 14.77,
-      "mean_volume_db": null,
-      "max_volume_db": null
+      "mean_volume_db": -17.4,
+      "max_volume_db": -0.6
     },
     "epilis": {
       "file_present": true,
       "audio_present": true,
       "audio_decoding_ok": true,
-      "audible_signal": false,
+      "audible_signal": true,
       "video_present": true,
       "codec": "aac",
       "sample_rate": 44100,
       "channels": 2,
       "audio_bitrate": 54467,
       "duration_seconds": 42.12,
-      "mean_volume_db": null,
-      "max_volume_db": null
+      "mean_volume_db": -17.3,
+      "max_volume_db": -0.7
     },
     "raffreddore": {
       "file_present": true,
       "audio_present": true,
       "audio_decoding_ok": true,
-      "audible_signal": false,
+      "audible_signal": true,
       "video_present": true,
       "codec": "aac",
       "sample_rate": 44100,
       "channels": 2,
       "audio_bitrate": 57177,
       "duration_seconds": 38.13,
-      "mean_volume_db": null,
-      "max_volume_db": null
+      "mean_volume_db": -16.7,
+      "max_volume_db": -0.9
     }
   },
-  "all_have_decodable_audible_audio": false,
+  "all_have_decodable_audible_audio": true,
   "caveat": "Presence and volume do not establish whether track is voice/music, whether it matches an earlier Instagram post, or rights ownership."
 }
