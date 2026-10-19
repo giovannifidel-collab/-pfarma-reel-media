@@ -1,1 +1,52 @@
-{"status":"audio_check_failed_before_reporting"}
+{
+  "checked_at": "2026-10-19T21:22:45.183012+00:00",
+  "method": "ffprobe audio codec inspection and FFmpeg PCM decode / volumedetect",
+  "only_media_inspection": true,
+  "publishing_mutations": 0,
+  "files": {
+    "skincare": {
+      "file_present": true,
+      "audio_present": true,
+      "audio_decoding_ok": true,
+      "audible_signal": false,
+      "video_present": true,
+      "codec": "aac",
+      "sample_rate": 44100,
+      "channels": 2,
+      "audio_bitrate": 58311,
+      "duration_seconds": 14.77,
+      "mean_volume_db": null,
+      "max_volume_db": null
+    },
+    "epilis": {
+      "file_present": true,
+      "audio_present": true,
+      "audio_decoding_ok": true,
+      "audible_signal": false,
+      "video_present": true,
+      "codec": "aac",
+      "sample_rate": 44100,
+      "channels": 2,
+      "audio_bitrate": 54467,
+      "duration_seconds": 42.12,
+      "mean_volume_db": null,
+      "max_volume_db": null
+    },
+    "raffreddore": {
+      "file_present": true,
+      "audio_present": true,
+      "audio_decoding_ok": true,
+      "audible_signal": false,
+      "video_present": true,
+      "codec": "aac",
+      "sample_rate": 44100,
+      "channels": 2,
+      "audio_bitrate": 57177,
+      "duration_seconds": 38.13,
+      "mean_volume_db": null,
+      "max_volume_db": null
+    }
+  },
+  "all_have_decodable_audible_audio": false,
+  "caveat": "Presence and volume do not establish whether track is voice/music, whether it matches an earlier Instagram post, or rights ownership."
+}
