@@ -48,7 +48,7 @@ jobs:
               file = media_dir / (name + ".mp4")
               output = {"file_present":file.is_file(), "audio_present":False,
                         "audio_decoding_ok":False, "audible_signal":False,
-                        "video_present":False,"codec":None,"sample_rate":None,
+                        "video_present":False,"video_codec":None,"width":None,"height":None,"codec":None,"sample_rate":None,
                         "channels":None,"audio_bitrate":None,
                         "duration_seconds":None,"mean_volume_db":None,"max_volume_db":None}
               report["files"][name] = output
@@ -56,7 +56,7 @@ jobs:
                   print("REEL AUDIO",name, "MISSING MP4")
                   continue
               probe = subprocess.run(["ffprobe","-v","error","-show_entries",
-                   "format=duration:stream=codec_type,codec_name,sample_rate,channels,bit_rate",
+                   "format=duration:stream=codec_type,codec_name,sample_rate,channels,bit_rate,width,height",
                    "-of","json",str(file)],capture_output=True,text=True,timeout=45)
               if probe.returncode:
                   output["probe_failed"]=True
@@ -64,6 +64,11 @@ jobs:
               data=json.loads(probe.stdout)
               streams=data.get("streams",[])
               output["video_present"]=any(s.get("codec_type")=="video" for s in streams)
+              video=next((s for s in streams if s.get("codec_type")=="video"),None)
+              if video:
+                  output["video_codec"]=video.get("codec_name")
+                  output["width"]=video.get("width")
+                  output["height"]=video.get("height")
               audio=next((s for s in streams if s.get("codec_type")=="audio"),None)
               try: output["duration_seconds"]=round(float(data["format"]["duration"]),2)
               except (KeyError,ValueError,TypeError): pass
@@ -95,6 +100,7 @@ jobs:
           report["all_have_decodable_audible_audio"]=all(
               v["file_present"] and v["video_present"] and v["audio_present"]
               and v["audio_decoding_ok"] and v["audible_signal"]
+              and v["video_codec"]=="h264" and (v["width"] or 0)>=480 and (v["height"] or 0)>=720
               for v in report["files"].values())
           report["caveat"]="Presence and volume do not establish whether track is voice/music, whether it matches an earlier Instagram post, or rights ownership."
           Path("diagnostics").mkdir(exist_ok=True)
