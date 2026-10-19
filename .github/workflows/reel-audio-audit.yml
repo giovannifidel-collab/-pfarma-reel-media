@@ -1,0 +1,124 @@
+name: PFarma Media - Verify original sound in 3 Instagram Reel MP4s
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/reel-audio-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfarma-original-reel-audio-audit
+  cancel-in-progress: false
+
+jobs:
+  verify-sound:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Analyze MP4 audio presence, decoding and non-silent signal (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffprobe
+          command -v ffmpeg
+          python - <<'PY'
+          import json, subprocess, re, datetime, os
+          from pathlib import Path
+          media_dir = Path("media")
+          report = {"checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "method":"ffprobe audio codec inspection and FFmpeg PCM decode / volumedetect",
+                    "only_media_inspection":True, "publishing_mutations":0, "files":{}}
+          for name in ("skincare", "epilis", "raffreddore"):
+              file = media_dir / (name + ".mp4")
+              output = {"file_present":file.is_file(), "audio_present":False,
+                        "audio_decoding_ok":False, "audible_signal":False,
+                        "video_present":False,"codec":None,"sample_rate":None,
+                        "channels":None,"audio_bitrate":None,
+                        "duration_seconds":None,"mean_volume_db":None,"max_volume_db":None}
+              report["files"][name] = output
+              if not file.is_file():
+                  print("REEL AUDIO",name, "MISSING MP4")
+                  continue
+              probe = subprocess.run(["ffprobe","-v","error","-show_entries",
+                   "format=duration:stream=codec_type,codec_name,sample_rate,channels,bit_rate",
+                   "-of","json",str(file)],capture_output=True,text=True,timeout=45)
+              if probe.returncode:
+                  output["probe_failed"]=True
+                  continue
+              data=json.loads(probe.stdout)
+              streams=data.get("streams",[])
+              output["video_present"]=any(s.get("codec_type")=="video" for s in streams)
+              audio=next((s for s in streams if s.get("codec_type")=="audio"),None)
+              try: output["duration_seconds"]=round(float(data["format"]["duration"]),2)
+              except (KeyError,ValueError,TypeError): pass
+              if not audio:
+                  print("REEL AUDIO",name,"NO AUDIO STREAM")
+                  continue
+              output["audio_present"]=True
+              output["codec"]=audio.get("codec_name")
+              output["sample_rate"]=int(audio["sample_rate"]) if audio.get("sample_rate") else None
+              output["channels"]=audio.get("channels")
+              output["audio_bitrate"]=int(audio["bit_rate"]) if audio.get("bit_rate") else None
+              length=str(min(90,max(2,output["duration_seconds"] or 90)))
+              detect=subprocess.run(["ffmpeg","-hide_banner","-nostdin","-v","info",
+                "-i",str(file),"-map","0:a:0","-vn","-t",length,"-af","volumedetect",
+                "-f","null","-"],capture_output=True,text=True,timeout=120)
+              output["audio_decoding_ok"]=detect.returncode==0
+              if detect.returncode:
+                  output["decoder_failure"]=True
+              else:
+                  for field,label in (("mean_volume","mean_volume_db"),("max_volume","max_volume_db")):
+                      found=re.findall(r"\\b"+field+r":\\s*(-?[0-9.]+) dB",detect.stderr)
+                      if found:
+                          output[label]=float(found[-1])
+                  maxvol=output["max_volume_db"]
+                  meanvol=output["mean_volume_db"]
+                  output["audible_signal"]=(maxvol is not None and meanvol is not None
+                      and maxvol > -40 and meanvol > -55)
+              print("REEL AUDIO",name,json.dumps(output,ensure_ascii=False,sort_keys=True))
+          report["all_have_decodable_audible_audio"]=all(
+              v["file_present"] and v["video_present"] and v["audio_present"]
+              and v["audio_decoding_ok"] and v["audible_signal"]
+              for v in report["files"].values())
+          report["caveat"]="Presence and volume do not establish whether track is voice/music, whether it matches an earlier Instagram post, or rights ownership."
+          Path("diagnostics").mkdir(exist_ok=True)
+          Path("diagnostics/reel-audio-audit.json").write_text(
+              json.dumps(report,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          print("ORIGINAL AUDIO VERDICT",report["all_have_decodable_audible_audio"])
+          PY
+      - name: Save audio inspection findings (no uploads or posting)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f diagnostics/reel-audio-audit.json ]; then
+            mkdir -p diagnostics
+            printf '{"status":"audio_check_failed_before_reporting"}\n' > diagnostics/reel-audio-audit.json
+          fi
+          git config user.name "pfarma-media-audit[bot]"
+          git config user.email "pfarma-media-audit@users.noreply.github.com"
+          git add diagnostics/reel-audio-audit.json
+          if ! git diff --cached --quiet; then
+            git commit -m "diagnostics(media): summarize decoded audio on 3 owned Reel MP4s"
+            for n in 1 2 3; do
+              git pull --rebase origin main
+              if git push origin HEAD:main; then break; fi
+              if [ "$n" = 3 ]; then exit 1; fi
+              sleep 3
+            done
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path("diagnostics/reel-audio-audit.json").read_text())
+          if data.get("all_have_decodable_audible_audio") is not True:
+              raise SystemExit("At least one Reel missing or silent audio; do not auto-schedule.")
+          PY
