@@ -23,6 +23,14 @@ jobs:
         with:
           persist-credentials: true
           fetch-depth: 0
+      - name: Install official Ubuntu FFmpeg audio inspection tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
+          ffprobe -version | head -n 1
+
       - name: Analyze MP4 audio presence, decoding and non-silent signal (read-only)
         shell: bash
         run: |
@@ -76,7 +84,7 @@ jobs:
                   output["decoder_failure"]=True
               else:
                   for field,label in (("mean_volume","mean_volume_db"),("max_volume","max_volume_db")):
-                      found=re.findall(r"\\b"+field+r":\\s*(-?[0-9.]+) dB",detect.stderr)
+                      found=re.findall(field+r":\\s*(-?[0-9.]+) dB",detect.stderr)
                       if found:
                           output[label]=float(found[-1])
                   maxvol=output["max_volume_db"]
