@@ -84,7 +84,7 @@ jobs:
                   output["decoder_failure"]=True
               else:
                   for field,label in (("mean_volume","mean_volume_db"),("max_volume","max_volume_db")):
-                      found=re.findall(field+r":\\s*(-?[0-9.]+) dB",detect.stderr)
+                      found=[line.split(field+":",1)[1].strip().split(" dB",1)[0].strip() for line in detect.stderr.splitlines() if field+":" in line]
                       if found:
                           output[label]=float(found[-1])
                   maxvol=output["max_volume_db"]
