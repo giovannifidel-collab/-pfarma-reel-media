@@ -1,0 +1,97 @@
+name: PFarma Media - Verify GitHub Pages public delivery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pages-health.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfarma-reel-pages-verification
+  cancel-in-progress: false
+
+jobs:
+  verify-pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Verify GitHub Pages configuration and HTTP accessibility
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime,json,os,time,subprocess
+          from pathlib import Path
+          from urllib.request import Request,urlopen
+          from urllib.error import URLError,HTTPError
+
+          site="https://giovannifidel-collab.github.io/-pfarma-reel-media/"
+          output={"site":site,"checked_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                  "repo":"giovannifidel-collab/-pfarma-reel-media","pages_enabled":False,
+                  "pages_http_ok":False,"pages_contains_pfarma":False}
+          try:
+              api=subprocess.run(["gh","api","repos/giovannifidel-collab/-pfarma-reel-media/pages"],
+                    capture_output=True,text=True,check=False,timeout=12)
+              if api.returncode==0:
+                  obj=json.loads(api.stdout)
+                  output["pages_enabled"]=True
+                  output["pages_build_type"]=obj.get("build_type")
+                  output["pages_source_branch"]=(obj.get("source") or {}).get("branch")
+                  output["pages_source_path"]=(obj.get("source") or {}).get("path")
+          except (OSError,ValueError,subprocess.TimeoutExpired):
+              pass
+          for attempt in range(36):
+              try:
+                  req=Request(site,headers={"User-Agent":"PFarmaPagesHealth/1.0"})
+                  with urlopen(req,timeout=12) as resp:
+                      page=resp.read(4096).decode("utf-8","replace")
+                      output["pages_http_ok"]=resp.status==200
+                      output["pages_contains_pfarma"]="PFarma Reel Media" in page
+                      if output["pages_http_ok"] and output["pages_contains_pfarma"]:
+                          break
+              except (URLError,HTTPError,TimeoutError,ValueError):
+                  pass
+              time.sleep(8)
+          output["status"]="passed" if (output["pages_enabled"] and
+                   output["pages_http_ok"] and output["pages_contains_pfarma"]) else "failed"
+          Path("diagnostics").mkdir(exist_ok=True)
+          Path("diagnostics/pages-health.json").write_text(json.dumps(output,indent=2)+"\n")
+          print("PAGES_HEALTH",json.dumps(output))
+          if output["status"]!="passed":
+              with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as f:
+                  f.write("GitHub Pages verification failed; check Settings > Pages.\n")
+          PY
+
+      - name: Save safe diagnostic to public media repo
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f diagnostics/pages-health.json ]; then
+            echo '{"status":"failed_before_probe"}' > diagnostics/pages-health.json
+          fi
+          git config user.name "pfarma-reel-health[bot]"
+          git config user.email "pfarma-reel-health@users.noreply.github.com"
+          git add diagnostics/pages-health.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "diagnostics: verify public GitHub Pages delivery"
+          git push origin HEAD:main
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          obj=json.loads(Path("diagnostics/pages-health.json").read_text())
+          if obj.get("status") != "passed":
+              raise SystemExit("GitHub Pages public site did not verify")
+          PY
