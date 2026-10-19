@@ -1,0 +1,78 @@
+name: PFarma Media - Normalize Épilis to reliable 720p Instagram Reel
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/normalize-epilis.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfarma-reel-epilis-normalize
+  cancel-in-progress: false
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
+
+      - name: Convert low-resolution original to 720x1280 H264, preserve audible audio
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s media/epilis.mp4
+          test ! -e media/epilis-hd.mp4
+          ffmpeg -hide_banner -loglevel error -nostdin -y -i media/epilis.mp4 \
+            -map 0:v:0 -map 0:a:0 -vf 'scale=720:1280:flags=lanczos,setsar=1' \
+            -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p \
+            -c:a aac -b:a 96k -ar 44100 -ac 2 -movflags +faststart \
+            media/epilis-hd.mp4
+          python - <<'PY'
+          import json,subprocess
+          f='media/epilis-hd.mp4'
+          v=subprocess.run(['ffprobe','-v','error','-show_entries',
+             'stream=codec_type,codec_name,width,height:format=duration,size',
+             '-of','json',f],capture_output=True,text=True,check=True)
+          d=json.loads(v.stdout)
+          video=next(x for x in d['streams'] if x['codec_type']=='video')
+          audio=next(x for x in d['streams'] if x['codec_type']=='audio')
+          assert video['codec_name']=='h264' and video['width']==720 and video['height']==1280
+          assert audio['codec_name']=='aac'
+          assert 5 <= float(d['format']['duration']) <= 180
+          assert int(d['format']['size']) < 90*1024*1024
+          print('NORMALIZED_EPILIS_H264_AAC_PASS', video['width'],video['height'],d['format']['duration'])
+          PY
+          git config user.name "pfarma-media-bridge[bot]"
+          git config user.email "pfarma-media-bridge@users.noreply.github.com"
+          git add media/epilis-hd.mp4
+          git commit -m "media: normalize owned Épilis Reel to H264 AAC 720x1280"
+          git push origin HEAD:main
+      - name: Confirm public MP4 serves valid content, after Pages deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import time
+          from urllib.request import urlopen,Request
+          from urllib.error import URLError,HTTPError
+          url='https://giovannifidel-collab.github.io/-pfarma-reel-media/media/epilis-hd.mp4'
+          for n in range(75):
+              try:
+                  with urlopen(Request(url,headers={'Range':'bytes=0-31'}),timeout=12) as r:
+                      if r.status in (200,206) and 'video/' in r.headers.get('Content-Type','').lower() and r.read(16)[4:8]==b'ftyp':
+                          print('VERIFIED_PUBLIC_HD_VIDEO',url)
+                          break
+              except (URLError,HTTPError,TimeoutError,OSError): pass
+              time.sleep(5)
+          else: raise SystemExit('HD video hosting verification failed')
+          PY
