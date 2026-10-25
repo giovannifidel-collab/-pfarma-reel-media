@@ -1,0 +1,75 @@
+name: PFarma Social Creatives - Week of Oct 26
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/generate_social_oct26.py"
+      - ".github/workflows/generate-social-oct26.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfarma-social-weekly-creatives
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Install Pillow pinned for public-only creative rendering
+        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0"
+      - name: Generate typographic organic feed and Story JPGs
+        run: |
+          set -euo pipefail
+          python tools/generate_social_oct26.py
+          test "$(find media/weekly/2026-10-26 -name '*.jpg' | wc -l)" -eq 10
+      - name: Commit checked PNG/JPEG results with no secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "pfarma-social-creative[bot]"
+          git config user.email "pfarma-social-creative@users.noreply.github.com"
+          git add media/weekly/2026-10-26/
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "design: store branded PFarma Oct 26-Nov 1 organic creatives"
+          for i in 1 2 3 4; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 4
+          done
+          exit 1
+      - name: Confirm each JPG is publicly accessible from GitHub Pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import time
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          names=["skincare_feed","unghie_feed","viso_feed","laser_feed","pmu_feed",
+            "unghie_story","viso_story","laser_story","pmu_tease_story","pmu_story"]
+          base="https://giovannifidel-collab.github.io/-pfarma-reel-media/media/weekly/2026-10-26/"
+          remaining=set(names)
+          for attempt in range(72):
+              for name in list(remaining):
+                  try:
+                      with urlopen(Request(base+name+".jpg",headers={"Range":"bytes=0-32"}),
+                                   timeout=16) as r:
+                          data=r.read(3)
+                          if r.status in (200,206) and data==b"\xff\xd8\xff" and "image/jpeg" in r.headers.get("Content-Type",""):
+                              print("PUBLIC_IMAGE_VERIFIED",name)
+                              remaining.remove(name)
+                  except (HTTPError,URLError,TimeoutError,OSError):pass
+              if not remaining:break
+              time.sleep(5)
+          if remaining:raise SystemExit("Some public image assets not accessible: "+",".join(sorted(remaining)))
+          print("ALL_10_PUBLIC_IMAGES_VERIFIED")
+          PY
