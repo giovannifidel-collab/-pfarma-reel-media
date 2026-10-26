@@ -60,7 +60,7 @@ jobs:
                   try:
                       with urlopen(Request(u+f,headers={"Range":"bytes=0-16"}),timeout=16) as r:
                           hdr=r.read(16)
-                          if r.status in (200,206) and "image/png" in r.headers.get("Content-Type","").lower() and hdr.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+                          if r.status in (200,206) and "image/png" in r.headers.get("Content-Type","").lower() and hdr[:4]==bytes([137,80,78,71]):
                               print("VERIFIED_PUBLIC_PNG",f)
                               break
                   except (HTTPError,URLError,TimeoutError,OSError): pass
